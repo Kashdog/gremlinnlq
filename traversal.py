@@ -3,15 +3,16 @@ from spacy import displacy
 
 nlp = spacy.load('en')
 fetchtokens = ['give', 'show', 'find', 'retrieve', 'get', 'download', 'select', 'obtain', 'show', 'display']
-keywords = {'databases': 'database', 'assets': 'asset', 'steward': 'is_steward_of', 'people': 'person', 'collections': 'collection'}
+keywords = {'databases': 'database', 'names': 'name', 'assets': 'asset', 'asset': 'asset', 'steward': 'is_steward_of', 'people': 'person', 'collections': 'collection'}
 inverb = {'stewarded': 'is_steward_of', 'used': 'uses', 'rated': 'rates', 'commented': 'comments', 'contained': 'contains'}
 outverb = {'contain': 'contains', 'containing': 'contains'}
 used = ['used']
-doc = nlp(u'find all collections containing ABC')
+doc = nlp(u'find names of all assets stewarded by ABC')
 be = ['is','has', 'was', 'are']
 # if x.dep_ == "d" selects parts of the sentence under the ancestor that have dependency function equal to d
 # phrase += assembles the gremlin phrase with blanks for inputs
 # k.append adds parts to the phrase
+# for x in children, checks the grammar parts that the ancestor points to
 
 phrase = ""
 k = []
@@ -92,10 +93,9 @@ for token in doc:
                         if dobjchild.dep_ == "amod":
                             if dobjchild.text in used:
                                 phrase = ""
+                                k = []
                                 phrase += r"g.E().has('name', 'uses').inV().has('types', '{}')"
                                 k.append(keywords[child.text])
-                                
-                                
                                 for amodchild in dobjchild.children:
                                     if amodchild.dep_ == "advmod":
                                         if amodchild.text == "frequently":
@@ -106,13 +106,30 @@ for token in doc:
                                                         k.append('decr')
                                                     elif advmodchild.text == "least":
                                                         k.append('incr')
+                                            for advmodchild in child.children:
+                                                if advmodchild.dep_ == "nsubj":
+                                                    phrase += r".limit({})"
+                                                    k.append(advmodchild.text)
+                                            for advmodchild in child.children:
+                                                if advmodchild.dep_ == "det":
+                                                    phrase += r".limit({})"
+                                                    k.append("1")
                                 
-                                
+                    for dobjchild in child.children:     
                         if dobjchild.dep_ == "prep":
-                            print(dobjchild.text)
                             for prepchild in dobjchild.children:
                                 if prepchild.dep_ == "pobj":
                                     k.append(prepchild.text)
+                                    for pobjchild in prepchild.children:
+                                        if pobjchild.dep_ == "acl":
+                                            if pobjchild.text in inverb:
+                                                phrase += r".where(_.in('" + inverb[pobjchild.text]+ r"').has('name', '{}'))"
+                                                for aclchild in pobjchild.children:
+                                                        if aclchild.dep_ == "agent":
+                                                            for agentchild in aclchild.children:
+                                                                if agentchild.dep_ == "pobj":
+                                                                    k.append(agentchild.text)
+                                    phrase += ".properties('" + keywords[child.text] + "').value()" 
             for child in token.children:
                 if child.dep_ == "ccomp":
                     if child.text in be:
@@ -160,8 +177,5 @@ for token in doc:
                             if ccompchild.dep_ == "nsubj":
                                 phrase += r".limit({})"
                                 k.append(ccompchild.text)
-                                
-                                
-
 print(phrase.format(*k))
 displacy.serve(doc, style='dep')
